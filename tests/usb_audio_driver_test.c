@@ -346,6 +346,20 @@ static void layouts(void)
     puts("USB audio layouts: Out / In left out, interfaces renumbered, absent streams stall: OK");
 }
 
+static void restart_session(void)
+{
+    /* The SIE can die after configuration, leaving a retry to reset it locally
+     * without a host bus-reset interrupt. Completed application queues survive. */
+    usb.up = 0; usb.config = 1; usb.suspended = 1;
+    usb.sx_on = usb.e0_tx = usb.has_pend_addr = usb.rx_pend = 1;
+    mo_r = 4; mo_w = 5;
+    usb_retry(5000);
+    assert(usb.up && !usb.config && !usb.suspended && !usb.sx_on);
+    assert(!usb.e0_tx && !usb.has_pend_addr && !usb.rx_pend);
+    assert(mo_r == 4 && mo_w == 5);
+    mo_r = mo_w;
+}
+
 /* The knob rests 0.6 s before the host sees a change; then a second off the bus. */
 static void replug(void)
 {
@@ -460,6 +474,8 @@ int main(void)
     assert(common[S_INTRRX1E] == 2);
     puts("USB audio endpoints: ownership, alternate settings, suspend/reset, frame wrap: OK");
     controls();
+    restart_session();
+    usb.config = 1;
     capture_pipeline();
     layouts();
     replug();

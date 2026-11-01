@@ -839,6 +839,30 @@ static int usb_midi_out_ready(void)                     /* MIDI out has somewher
     return usb.config != 0;
 }
 
+/* A bus reset and a local controller restart abandon the control session.
+ * Completed application queues have separate lifetimes. */
+static void usb_reset_state(void)
+{
+    usb.config = 0;
+    RING_PUBLISH();                                     /* audio can preempt a main-loop restart */
+    usb.suspended = 0;
+    usb.sx_on = 0;
+#ifdef FM6_RX
+    fm6_rx_on = 0;
+#endif
+#if MELODEE_OTA
+    sx_collect = 0;
+#endif
+    usb.e0_tx = 0;
+    usb.has_pend_addr = 0;
+    usb.rx_pend = 0;
+#if MELODEE_CDC
+    cdc.dtr = 0;
+    cdc.e0_rx = 0;
+    cdc.rx_pend = 0;
+#endif
+}
+
 static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 {
     uint32_t iu, it, ir;
@@ -888,29 +912,15 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
     if (iu & 0x02u)                                     /* resume */
         usb.suspended = 0;
     if (iu & 0x04u) {                                   /* bus reset */
+        usb.resets++;
+        sie_wr(S_FADDR, 0);
+        usb_reset_state();
 #if MELODEE_USB_AUDIO
         ua_hw_stop();
 #endif
-        usb.resets++;
-        sie_wr(S_FADDR, 0);
-        usb.config = 0;
-        usb.suspended = 0;
         mo_r = mo_w;                                    /* nothing stale for the next host */
-        usb.sx_on = 0;
-#ifdef FM6_RX
-        fm6_rx_on = 0;
-#endif
 #if MELODEE_OTA
         so_r = so_w;
-        sx_collect = 0;
-#endif
-        usb.e0_tx = 0;
-        usb.has_pend_addr = 0;
-        usb.rx_pend = 0;
-#if MELODEE_CDC
-        cdc.dtr = 0;
-        cdc.e0_rx = 0;
-        cdc.rx_pend = 0;
 #endif
         fm1_usb_ep0_buf(ep0buf);
         sie_wr(S_INTRUSBE, 0x07);
@@ -939,6 +949,7 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 
 static void usb_start(void)                             /* boot, or main-loop retry while usb.up == 0 */
 {
+    usb_reset_state();                                  /* hardware reset loses endpoint configuration */
 #if MELODEE_USB_AUDIO
     ua_reset();
     ua_rate_pending = 0;
