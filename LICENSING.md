@@ -45,6 +45,7 @@ Melodee's additions and modifications are credited separately in the source file
 | Original Felucca portions retained in the firmware, tools, web pages and tests | GPL-3.0-only | Source notices; `LICENSE` |
 | Felucca 1.6's fix for its issue #236 (rows dark while a storage erase stops the LED scan), ported by hand | GPL-3.0-only | `firmware/src/storage_hw.c` |
 | Felucca 1.6.1's safe CPU1 hold (`fm1_cpu1_halt`, release commit a53ecf4), as adapted in Melodee 1.4.3 (keremimo/melodee 6e6a580) | GPL-3.0-only | `firmware/hal/fm1_core1_stop.h` |
+| Firmware fixes adapted from [kmplngj/Felucca](https://github.com/kmplngj/Felucca): USB restart state (`f8ca642`, `ff036fd`), editor/OTA request ownership (`126da9dc`), FM6 effective-patch lifetime (`8f7d07f`), bounded external ARP catch-up (`e90af1c`), and defined PHYS signed scaling (`7be0e1a`) | GPL-3.0-only | `firmware/src/usb.c`, `editor.c`, `main.c`, `eng_fm6.c`, `voice.c`, `seq.c`, `eng_phys.c` and their regression tests |
 | The PHASE engine's waveforms: a C port of the oscillator of CrispyZebra (<https://github.com/hugelton/CrispyZebra>) | GPL-3.0 | `firmware/src/eng_phase.c` |
 | The panel picture | GPL-3.0-only | `docs/panel.jpg` |
 | Felucca 1.6.1's update package check (the update entry takes only a package whose flash.bin is an FM-1's size; another board's is refused before anything is erased), ported by hand | GPL-3.0-only | `firmware/src/ota.c`, `tests/ota_test.c`, `tests/ldr_test.c` |
