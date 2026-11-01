@@ -48,12 +48,13 @@ typedef struct {
 #define FM6_ON_ALL 0x3Fu
 
 static uint8_t fm6_patch[NTRK][FP_SIZE + 1u];   /* the tracks' patches (main loop writes, then fm6_pgen) */
-static volatile uint8_t fm6_pgen[NTRK];          /* +1 after each write of fm6_patch[t] */
+static volatile uint32_t fm6_pgen[NTRK];         /* +1 after each published patch write; aligned audio-side read */
 static volatile uint8_t fm6_lgen[NTRK];          /* +1 when the write was a new voice (a load): the notes stop */
 static uint8_t fm6_on[NTRK];                     /* the operator switches (bit k: the sixth first), all on at a load */
 static struct {                                  /* the patch through the macros: the audio ISR's copy */
     uint8_t p[FP_SIZE + 1u];
-    uint8_t gen, ok;
+    uint32_t gen;
+    uint8_t ok;
     int16_t e[8];                                /* P_E0..P_E7 it was made with */
     int32_t dt[6];                               /* DTUN: per operator, Q24 log2 */
 } fm6_eff[NTRK];
@@ -254,6 +255,17 @@ static void fm6_init(void)
 }
 
 /* -------------------------------------------------------------- macros --- */
+/* Only the audio side owns this cache. Patches can be loaded while a track is
+ * playing another engine, so even a wide generation alone cannot establish
+ * that an effective patch survived an engine switch. Drop it after leaving
+ * FM6; the first returning block rebuilds it from the published patch. */
+static void fm6_eff_drop(const track_t *t)
+{
+    uint32_t tr = (uint32_t)(t - trk);
+    if (tr < NTRK)
+        fm6_eff[tr].ok = 0;
+}
+
 /* the patch through E0..E7 (audio ISR; cheap when nothing changed). With every macro at 0 it is the patch.
  * 1 = made again (the patch or a macro changed) */
 static int fm6_eff_build(const track_t *t)
@@ -270,6 +282,8 @@ static int fm6_eff_build(const track_t *t)
             return 0;
     }
     fm6_eff[tr].gen = fm6_pgen[tr];
+    RING_PUBLISH();                                     /* read generation before copying: an intervening writer
+                                                        * leaves it behind, forcing another copy next block */
     memcpy(fm6_eff[tr].p, fm6_patch[tr], FP_SIZE);
     for (k = 0; k < 8u; k++)
         fm6_eff[tr].e[k] = e[k];

@@ -623,6 +623,10 @@ static void engine_block(track_t *t)
                 trk_note_on(t, t->xp_note[i], t->xp_vel[i]);
         }
     }
+#if MELODEE_FM6
+    if (t->engine != ENGI_FM6)                          /* audio-owned cache must not outlive FM6 */
+        fm6_eff_drop(t);
+#endif
     for (i = 0; i < 8u; i++)                            /* the engine's own values, for a later fade */
         t->pe_old[i] = t->p[P_E0 + i];
 }

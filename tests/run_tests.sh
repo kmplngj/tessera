@@ -360,6 +360,7 @@ if core && [ $TABLES = 1 ]; then
     t "engines off (SID, PHYS, CZ-1, ORACLE left out, FM back): never offered, their tracks FM6's first voice, the parts play" \
         engine_switch_fm:engine_switch_test $FW -DMELODEE_SID=0 -DMELODEE_SID_KIT=0 -DMELODEE_PHYS=0 -DMELODEE_CZ=0 -DMELODEE_ORACLE=0
     t "editor: real C protocol, malformed transfers and queue recovery" editor_test $FW
+    run "SysEx dispatch: editor requests survive late arrivals before OTA" python3 tests/sysex_dispatch_test.py
     t "DX7 librarian: USB voice/bank receive, dump replies and malformed frame recovery" fm6_sysex_test $FW
     t "SWING: track + global at most 100, sequencer step lengths, the SWG display" swing_test -O2 $FW
     t "upgrade: a project with a generator on each track saved, booted, loaded (tests/upgrade_check.sh: from an older build)" \
@@ -389,6 +390,8 @@ if sound && [ $TABLES = 1 ]; then
         "$OUT/regress" tests/golden.txt tests/cpu_baseline.txt
     t "PHYS: stability C-1..G9 over the parameter corners, worst-case cost against FM6 DRAWBARS, demos" phys_test \
         -DMELODEE_LEGACY_EXTRAS=1 -O2 $FW -- "$OUT/phys_test" build/phys_demo
+    t "PHYS: signed output scaling, unchanged PCM" phys_signed_test \
+        -DMELODEE_LEGACY_EXTRAS=1 -O1 $FW -fsanitize=shift-base -fno-sanitize-recover=all
     t "paired FM6 voices: serial/concurrent sample equality, a worker retired mid-song" dual_core_test \
         -O2 $FW -pthread
     t "audio: 1296 ordered engine assignments, releases, controls and concurrent PCM parity" audio_matrix_test -O2 $FW -pthread
@@ -409,6 +412,8 @@ if sound && [ $TABLES = 1 ]; then
     t "FM6: the DX7's algorithms, pitch, levels, envelopes, modulation; DC, clipping, macros, patches, voices, cost, demos" \
         fm6_test -O2 $FW -- "$OUT/fm6_test" build/fm6_demo
     t "FM6: native fp32 AMS against the double reference, every modulation" fm6_ams_test -O2 $FW
+    t "FM6: latent patch updates, engine switches, effective cache and first note" fm6_eff_test -O1 $FW
+    t "FM6: effective cache with CPU1 compiled out" fm6_eff_serial:fm6_eff_test -O1 $FW -DMELODEE_DUAL_CORE=0
     if [ -n "${DEXED_SRC:-}" ]; then
         run "FM6 vs Dexed: informational fp32 render comparison (DEXED_SRC)" sh tests/fm6_parity.sh --quick --diagnostic
     else

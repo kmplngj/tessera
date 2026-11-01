@@ -352,8 +352,8 @@ static void fm1_main(void)
         }
         fm6_service();                                  /* DX7 SysEx for FM6, a pending FM6 settings save */
 #if MELODEE_OTA
-        ed_service();                                   /* web editor SysEx */
-        ota_service();                                  /* M-UPGRADE handshake */
+        if (ed_service())                               /* OTA only for a held non-editor frame */
+            ota_service();                              /* M-UPGRADE handshake */
         if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
             usb.ota_req = 0;
             panic_req = (1u << NTRK) - 1u;               /* every track (bit per track) */
