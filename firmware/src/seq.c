@@ -295,7 +295,7 @@ static void seq_grid_place(track_t *t, uint32_t period, uint32_t done)
 }
 static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
 {
-    uint32_t period, cnt, list[64], len = 0, i, j, o;
+    uint32_t period, cnt, list[64], len = 0, i, j, o, fired;
     int32_t sw;
     if (t->arp_note) {
         if (t->arp_off <= gate_n)
@@ -308,10 +308,16 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
             arp_off(t);
         return;
     }
+    /* HOLD retains its chord and catch-up phase across external Stop. Only
+     * physically held keys may keep playing until Continue resumes it. */
+    if (midi_sync_active && !song.playing && !t->arp_phys)
+        return;
     period = seq_div_samples((uint32_t)t->p[P_ARATE]);
     sw = t->p[P_ASWING] * (int32_t)period / 250;
     t->arp_pos += n;
-    for (;;) {
+    /* Recover clock bursts and live rate changes over bounded calls. Any
+     * remaining phase stays in arp_pos for the next control block. */
+    for (fired = 0; fired < 8u; fired++) {
         if (t->arp_pos < period + (uint32_t)((t->arp_idx & 1u) ? sw : -sw) && t->arp_pos != 0xFFFFFFF + n)
             return;
         if (t->arp_pos >= 0xFFFFFFFu)
@@ -369,8 +375,7 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
             trk_note_on(t, t->arp_note, 100);
         }
         if (!midi_sync_active) return;
-        /* A recovered clock burst may cross several ARP steps. Consume them all
-         * and retain the residual phase, just as the sequencer does. */
+        /* Account for the pending phase without dropping overdue steps. */
         if (t->arp_note) {
             if (t->arp_off <= t->arp_pos) arp_off(t);
             else t->arp_off -= t->arp_pos;

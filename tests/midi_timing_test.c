@@ -248,6 +248,59 @@ static int arp_catchup_test(void)
         bad += check(swing ? "swung ARP burst matches small advances: note, index, residual and gate" :
                             "straight ARP burst matches small advances: note, index, residual and gate",
                      t->arp_idx == idx && t->arp_pos == pos && t->arp_off == off && t->arp_note == note);
+
+        /* A recovered clock burst or a live rate change can owe many steps.
+         * Bound each call, then drain the saved phase without adding time. */
+        if (t->arp_note) arp_off(t);
+        t->arp_idx = UINT32_MAX; t->arp_pos = 0xFFFFFFFu;
+        arp_tick(t, 0);
+        elapsed = 23u * 3072u + 321u;
+        for (uint32_t n = elapsed; n;) {
+            uint32_t chunk = n < 32u ? n : 32u;
+            arp_tick(t, chunk); n -= chunk;
+        }
+        idx = t->arp_idx; pos = t->arp_pos; off = t->arp_off; note = t->arp_note;
+        if (t->arp_note) arp_off(t);
+        t->arp_idx = UINT32_MAX; t->arp_pos = 0xFFFFFFFu;
+        arp_tick(t, 0); arp_tick(t, elapsed);
+        int bounded = t->arp_idx == 8u && t->arp_pos == elapsed - 8u * 3072u;
+        arp_tick(t, 0);
+        bounded &= t->arp_idx == 16u && t->arp_pos == elapsed - 16u * 3072u;
+        arp_tick(t, 0);
+        bad += check(swing ? "large swung ARP catch-up is bounded and drains every step without losing phase" :
+                            "large straight ARP catch-up is bounded and drains every step without losing phase",
+                     bounded && t->arp_idx == idx && t->arp_pos == pos && t->arp_note == note && (!note || t->arp_off == off));
+    }
+    return bad;
+}
+static int arp_stopped_backlog_test(void)
+{
+    int bad = 0;
+    for (uint32_t source = 1; source <= 2u; source++) {
+        timing_reset(source, 24000000u);
+        song.rec = 0;
+        timing_packet(timing_now, 0xFA, 0, 0, source); events_block(0);
+        track_t *t = &trk[0];
+        t->p[P_AMODE] = 1; t->p[P_AHOLD] = 1; t->p[P_ARATE] = 3; t->p[P_ASWING] = 0;
+        t->p[P_AOCT] = 1; t->p[P_APROB] = 127; t->p[P_AGATE] = 64;
+        t->nheld = 3; t->held[0] = 60; t->held[1] = 64; t->held[2] = 67;
+        t->arp_idx = UINT32_MAX; t->arp_pos = 0xFFFFFFFu; t->arp_phys = 0;
+        arp_tick(t, 0); arp_tick(t, 64u * 3072u + 321u);
+        uint32_t idx = t->arp_idx;
+        timing_packet(timing_now, 0xFC, 0, 0, source); events_block(0);
+        /* The advance before Stop may drain eight. The stopped advance must
+         * leave the remaining debt for Continue, even with zero elapsed time. */
+        int stopped = !song.playing && t->arp_idx == idx + 8u && !t->arp_note && t->nheld == 3u;
+        idx = t->arp_idx;
+        uint32_t pos = t->arp_pos;
+        for (uint32_t i = 0; i < 4u; i++) events_block(CTL);
+        stopped &= t->arp_idx == idx && t->arp_pos == pos && !t->arp_note &&
+                   !gate_note(t, 60) && !gate_note(t, 64) && !gate_note(t, 67);
+        bad += check(source == 1u ? "USB Stop pauses a latched ARP's catch-up debt without playing stopped notes" :
+                                   "TRS Stop pauses a latched ARP's catch-up debt without playing stopped notes", stopped);
+        timing_packet(timing_now, 0xFB, 0, 0, source); events_block(0);
+        bad += check("Continue resumes the retained ARP debt in bounded steps",
+                     song.playing && t->arp_idx == idx + 16u && t->arp_pos == pos - 16u * 3072u);
     }
     return bad;
 }
@@ -479,7 +532,7 @@ static int old_formats_and_overdub_test(void)
 #ifndef MIDI_TIMING_NO_MAIN
 int main(void)
 {
-    int bad = grid_test() + timeline_test() + phase_test() + long_session_test() + overflow_phase_test() + arp_catchup_test() + tempo_flutter_test() + divisions_test() + lengths_and_swing_test() +
+    int bad = grid_test() + timeline_test() + phase_test() + long_session_test() + overflow_phase_test() + arp_catchup_test() + arp_stopped_backlog_test() + tempo_flutter_test() + divisions_test() + lengths_and_swing_test() +
               loop_replay_test() + recorded_gate_storage_test() + old_formats_and_overdub_test();
     printf("%s\n", bad ? "MIDI TIMING TEST FAILED" : "MIDI timing tests passed");
     return bad != 0;
